@@ -13,8 +13,7 @@ START_DATE = "2026-09-29"
 NOTES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPU8Q9EaMP1vNOMkcKnnwo5zs3XXyubtLbVWy3__SMqE1FZ1pnZhegHEa6xTzIE2e2MQai1CWmpqjk/pub?gid=0&single=true&output=csv"
 # ----------------------------------------------------------------------------------------
 
-COLS = ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
-        "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"]
+COLS = ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link", "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"]
 
 st.set_page_config(page_title="Gold Tracker", page_icon="logo.png", layout="wide")
 st.logo("logo.png", size="large")
@@ -72,16 +71,14 @@ notes_in_data = notes[notes["date"].isin(data.index)]
 
 # ---------------- header ----------------
 st.title("Gold Tracker")
-st.caption("Gold next to the asset that usually moves against it (the US dollar) "
-           "and the one that usually moves with it (silver). Click any day on the chart to see what happened.")
+st.caption("Gold next to the asset that usually moves against it (the US dollar) " "and the one that usually moves with it (silver). Click any day on the chart to see what happened.")
 
 last = data.index[-1]
 c1, c2, c3 = st.columns(3)
 c1.metric("Gold (US$/oz)", f"${data['Gold'].iloc[-1]:,.0f}", pct(moves["Gold"].iloc[-1]))
 c2.metric("US dollar index", f"{data['Dollar'].iloc[-1]:.2f}", pct(moves["Dollar"].iloc[-1]))
 c3.metric("Silver (US$/oz)", f"${data['Silver'].iloc[-1]:.2f}", pct(moves["Silver"].iloc[-1]))
-st.caption(f"Latest close: {last:%a %d %b %Y}. Prices refresh hourly, notes every 5 minutes. "
-           f"Notes loaded: {len(notes)}.")
+st.caption(f"Latest close: {last:%a %d %b %Y}. Prices refresh hourly, notes every 5 minutes. " f"Notes loaded: {len(notes)}.")
 if notes_error: st.warning(f"Could not read the notes sheet: {notes_error}")
 if not notes_error and len(notes) == 0: st.info("The notes sheet was read, but no rows had a valid date (e.g. 2026-10-09).")
 if st.button("Reload notes now"): load_notes.clear(); st.rerun()
@@ -104,21 +101,12 @@ with st.expander("What is measured, and how to read it"):
 corr_dollar = moves["Gold"].expanding(min_periods=4).corr(moves["Dollar"])
 corr_silver = moves["Gold"].expanding(min_periods=4).corr(moves["Silver"])
 
-fig = make_subplots(
-    rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.07,
-    row_heights=[0.34, 0.2, 0.2, 0.26],
-    subplot_titles=["Gold, US$ per troy ounce (black dots = days with notes)",
-                    "US dollar index: usually moves OPPOSITE to gold",
-                    "Silver, US$ per troy ounce: usually moves WITH gold",
-                    "Correlation with gold so far (−1 opposite · 0 no link · +1 together)"])
-fig.add_trace(go.Scatter(x=data.index, y=data["Gold"], name="Gold", mode="lines+markers",
-                         marker=dict(size=6), line=dict(color="goldenrod")), row=1, col=1)
+fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.07, row_heights=[0.34, 0.2, 0.2, 0.26], subplot_titles=["Gold, US$ per troy ounce (black dots = days with notes)", "US dollar index: usually moves OPPOSITE to gold", "Silver, US$ per troy ounce: usually moves WITH gold", "Correlation with gold so far (−1 opposite · 0 no link · +1 together)"])
+fig.add_trace(go.Scatter(x=data.index, y=data["Gold"], name="Gold", mode="lines+markers", marker=dict(size=6), line=dict(color="goldenrod")), row=1, col=1)
 fig.add_trace(go.Scatter(x=data.index, y=data["Dollar"], name="Dollar", line=dict(color="seagreen")), row=2, col=1)
 fig.add_trace(go.Scatter(x=data.index, y=data["Silver"], name="Silver", line=dict(color="steelblue")), row=3, col=1)
-fig.add_trace(go.Scatter(x=corr_dollar.index, y=corr_dollar, name="Dollar vs gold",
-                         line=dict(color="seagreen")), row=4, col=1)
-fig.add_trace(go.Scatter(x=corr_silver.index, y=corr_silver, name="Silver vs gold",
-                         line=dict(color="steelblue")), row=4, col=1)
+fig.add_trace(go.Scatter(x=corr_dollar.index, y=corr_dollar, name="Dollar vs gold", line=dict(color="seagreen")), row=4, col=1)
+fig.add_trace(go.Scatter(x=corr_silver.index, y=corr_silver, name="Silver vs gold", line=dict(color="steelblue")), row=4, col=1)
 fig.add_hline(y=0, line_color="grey", row=4, col=1)
 fig.update_yaxes(range=[-1, 1], title_text="−1 to +1", row=4, col=1)
 fig.update_yaxes(title_text="US$/oz", row=1, col=1)
@@ -129,17 +117,10 @@ fig.update_yaxes(title_text="US$/oz", row=3, col=1)
 gold_days = notes_in_data[(notes_in_data["title"] != "") | (notes_in_data["gold_link"] != "")]
 dollar_days = notes_in_data[(notes_in_data["dollar_note"] != "") | (notes_in_data["dollar_link"] != "")]
 silver_days = notes_in_data[(notes_in_data["silver_note"] != "") | (notes_in_data["silver_link"] != "")]
-fig.add_trace(go.Scatter(x=gold_days["date"], y=data["Gold"].reindex(gold_days["date"]), mode="markers",
-                         marker=dict(size=11, color="black"), text=gold_days["title"],
-                         hoverinfo="text", name="Gold news", showlegend=False), row=1, col=1)
-fig.add_trace(go.Scatter(x=dollar_days["date"], y=data["Dollar"].reindex(dollar_days["date"]), mode="markers",
-                         marker=dict(size=11, color="black"), text=dollar_days["dollar_note"],
-                         hoverinfo="text", name="Dollar news", showlegend=False), row=2, col=1)
-fig.add_trace(go.Scatter(x=silver_days["date"], y=data["Silver"].reindex(silver_days["date"]), mode="markers",
-                         marker=dict(size=11, color="black"), text=silver_days["silver_note"],
-                         hoverinfo="text", name="Silver news", showlegend=False), row=3, col=1)
-fig.update_layout(height=900, hovermode="x unified", clickmode="event+select",
-                  legend=dict(orientation="h", y=-0.05), margin=dict(t=40, b=10))
+fig.add_trace(go.Scatter(x=gold_days["date"], y=data["Gold"].reindex(gold_days["date"]), mode="markers", marker=dict(size=11, color="black"), text=gold_days["title"], hoverinfo="text", name="Gold news", showlegend=False), row=1, col=1)
+fig.add_trace(go.Scatter(x=dollar_days["date"], y=data["Dollar"].reindex(dollar_days["date"]), mode="markers", marker=dict(size=11, color="black"), text=dollar_days["dollar_note"], hoverinfo="text", name="Dollar news", showlegend=False), row=2, col=1)
+fig.add_trace(go.Scatter(x=silver_days["date"], y=data["Silver"].reindex(silver_days["date"]), mode="markers", marker=dict(size=11, color="black"), text=silver_days["silver_note"], hoverinfo="text", name="Silver news", showlegend=False), row=3, col=1)
+fig.update_layout(height=900, hovermode="x unified", clickmode="event+select", legend=dict(orientation="h", y=-0.05), margin=dict(t=40, b=10))
 
 event = st.plotly_chart(fig, width="stretch", on_select="rerun", selection_mode="points", key="chart")
 
@@ -154,8 +135,7 @@ all_days = list(data.index[::-1])
 note_days = set(notes_in_data["date"])
 default = notes_in_data["date"].iloc[-1] if len(notes_in_data) else data.index[-1]
 default = picked if picked is not None and picked in data.index else default
-day = st.selectbox("Day", all_days, index=all_days.index(default),
-                   format_func=lambda d: d.strftime("%a %d %b %Y") + ("  ●" if d in note_days else ""))
+day = st.selectbox("Day", all_days, index=all_days.index(default), format_func=lambda d: d.strftime("%a %d %b %Y") + ("  ●" if d in note_days else ""))
 
 # ---------------- day file ----------------
 left, right = st.columns([3, 2])
@@ -180,10 +160,8 @@ if check: right.write("✅ Silver moved with gold." if g * s > 0 else "❌ Silve
 st.divider()
 m = moves.dropna()
 a, b = st.columns(2)
-a.metric("Dollar vs gold, correlation so far", f"{m['Gold'].corr(m['Dollar']):+.2f}",
-         help="−1 = always opposite, +1 = always together")
-b.metric("Silver vs gold, correlation so far", f"{m['Gold'].corr(m['Silver']):+.2f}",
-         help="−1 = always opposite, +1 = always together")
+a.metric("Dollar vs gold, correlation so far", f"{m['Gold'].corr(m['Dollar']):+.2f}", help="−1 = always opposite, +1 = always together")
+b.metric("Silver vs gold, correlation so far", f"{m['Gold'].corr(m['Silver']):+.2f}", help="−1 = always opposite, +1 = always together")
 st.caption(f"Based on {len(m)} trading days. Fewer than 20 days is only a rough guide.")
 
 # ---------------- all notes ----------------
@@ -191,4 +169,28 @@ st.subheader("All notes")
 show = notes.copy()
 show["date"] = show["date"].dt.date
 if len(show) == 0: st.write("No notes yet.")
-if len(show) > 0: st.dataframe(show[["date", "title",
+if len(show) > 0: st.dataframe(show[["date", "title", "step1", "step2", "step3", "gold_link", "dollar_note", "dollar_link", "silver_note", "silver_link"]], width="stretch", hide_index=True, column_config={"gold_link": st.column_config.LinkColumn("Gold news"), "dollar_link": st.column_config.LinkColumn("Dollar news"), "silver_link": st.column_config.LinkColumn("Silver news")})
+
+
+# ---------------- Excel downloads ----------------
+def excel_bytes(prices, events, weekly=None):
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as xl:
+        prices.to_excel(xl, sheet_name="Daily prices")
+        events.to_excel(xl, sheet_name="Events", index=False)
+        if weekly is not None: weekly.to_excel(xl, sheet_name="Weekly")
+    return buf.getvalue()
+
+
+prices = data.round(2).join(moves.round(2).add_suffix(" % change"))
+prices.index = prices.index.date
+prices.index.name = "Date"
+weekly = data.resample("W-FRI").last()
+weekly = weekly.round(2).join((weekly.pct_change() * 100).round(2).add_suffix(" % week"))
+weekly.index = weekly.index.date
+weekly.index.name = "Week ending"
+
+week_start = (last - pd.Timedelta(days=last.weekday())).date()
+d1, d2 = st.columns(2)
+d1.download_button("Download everything (Excel)", excel_bytes(prices, show, weekly), file_name=f"gold_tracker_{date.today().isoformat()}.xlsx")
+d2.download_button("Download this week (Excel)", excel_bytes(prices[prices.index >= week_start], show[show["date"] >= week_start]), file_name=f"gold_week_of_{week_start.isoformat()}.xlsx")
