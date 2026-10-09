@@ -16,8 +16,8 @@ NOTES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPU8Q9EaMP1vNOMkcK
 COLS = ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
         "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"]
 
-st.set_page_config(page_title="Gold Tracker", page_icon="🟡", layout="wide")
-
+   st.set_page_config(page_title="Gold Tracker", page_icon="logo.png", layout="wide")
+   st.logo("logo.png", size="large")
 
 @st.cache_data(ttl=3600)
 def load_prices(start):
