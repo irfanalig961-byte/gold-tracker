@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 # ---------------- settings: the only lines you may ever need to change ----------------
 START_DATE = "2026-09-29"
 SHEET_ID = "1GD9qb-2rBw-fKg57ozI9MzVQv65n7m6LDdimATCFThI"   # from your Google Sheet's address
-NOTES_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+NOTES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPU8Q9EaMP1vNOMkcKnnwo5zs3XXyubtLbVWy3__SMqE1FZ1pnZhegHEa6xTzIE2e2MQai1CWmpqjk/pub?gid=0&single=true&output=csv"
 # ----------------------------------------------------------------------------------------
 
 st.set_page_config(page_title="Gold Tracker", page_icon="🟡", layout="wide")
