@@ -10,7 +10,6 @@ from plotly.subplots import make_subplots
 
 # ---------------- settings: the only lines you may ever need to change ----------------
 START_DATE = "2026-09-29"
-SHEET_ID = "1GD9qb-2rBw-fKg57ozI9MzVQv65n7m6LDdimATCFThI"   # from your Google Sheet's address
 NOTES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPU8Q9EaMP1vNOMkcKnnwo5zs3XXyubtLbVWy3__SMqE1FZ1pnZhegHEa6xTzIE2e2MQai1CWmpqjk/pub?gid=0&single=true&output=csv"
 # ----------------------------------------------------------------------------------------
 
@@ -38,7 +37,7 @@ def load_notes(url):
     notes = pd.read_csv(io.StringIO(text), dtype=str).fillna("")
     notes.columns = [c.strip().lower() for c in notes.columns]
     for col in ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
-                "dollar_note", "dollar_source", "dollar_link"]:
+                "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"]:
         if col not in notes.columns:
             notes[col] = ""
     notes["date"] = pd.to_datetime(notes["date"].str.strip(), errors="coerce").dt.normalize()
@@ -65,7 +64,7 @@ try:
 except Exception as e:
     notes_error = str(e)
     notes = pd.DataFrame(columns=["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
-                                  "dollar_note", "dollar_source", "dollar_link"])
+                                  "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"])
     notes["date"] = pd.to_datetime(notes["date"])
 
 moves = data.pct_change() * 100                       # daily % change
@@ -173,6 +172,11 @@ with left:
             if n["dollar_link"]:
                 line += f" [{n['dollar_source'] or 'read the article'}]({n['dollar_link']})"
             st.markdown(line)
+        if n["silver_note"] or n["silver_link"]:
+            line = f"🥈 Silver: {n['silver_note']}" if n["silver_note"] else "🥈 Silver news:"
+            if n["silver_link"]:
+                line += f" [{n['silver_source'] or 'read the article'}]({n['silver_link']})"
+            st.markdown(line)
     else:
         st.info("No note for this day yet.")
 with right:
@@ -199,10 +203,12 @@ st.subheader("All notes")
 if len(notes):
     show = notes.copy()
     show["date"] = show["date"].dt.date
-    st.dataframe(show[["date", "title", "step1", "step2", "step3", "gold_link", "dollar_note", "dollar_link"]],
+    st.dataframe(show[["date", "title", "step1", "step2", "step3", "gold_link",
+                       "dollar_note", "dollar_link", "silver_note", "silver_link"]],
                  width="stretch", hide_index=True,
                  column_config={"gold_link": st.column_config.LinkColumn("Gold news"),
-                                "dollar_link": st.column_config.LinkColumn("Dollar news")})
+                                "dollar_link": st.column_config.LinkColumn("Dollar news"),
+                                "silver_link": st.column_config.LinkColumn("Silver news")})
 else:
     st.write("No notes yet.")
 
