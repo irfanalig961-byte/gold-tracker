@@ -16,8 +16,9 @@ NOTES_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPU8Q9EaMP1vNOMkcK
 COLS = ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
         "dollar_note", "dollar_source", "dollar_link", "silver_note", "silver_source", "silver_link"]
 
-   st.set_page_config(page_title="Gold Tracker", page_icon="logo.png", layout="wide")
-   st.logo("logo.png", size="large")
+st.set_page_config(page_title="Gold Tracker", page_icon="logo.png", layout="wide")
+st.logo("logo.png", size="large")
+
 
 @st.cache_data(ttl=3600)
 def load_prices(start):
@@ -190,36 +191,4 @@ st.subheader("All notes")
 show = notes.copy()
 show["date"] = show["date"].dt.date
 if len(show) == 0: st.write("No notes yet.")
-if len(show) > 0: st.dataframe(show[["date", "title", "step1", "step2", "step3", "gold_link",
-                                     "dollar_note", "dollar_link", "silver_note", "silver_link"]],
-                               width="stretch", hide_index=True,
-                               column_config={"gold_link": st.column_config.LinkColumn("Gold news"),
-                                              "dollar_link": st.column_config.LinkColumn("Dollar news"),
-                                              "silver_link": st.column_config.LinkColumn("Silver news")})
-
-
-# ---------------- Excel downloads ----------------
-def excel_bytes(prices, events, weekly=None):
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as xl:
-        prices.to_excel(xl, sheet_name="Daily prices")
-        events.to_excel(xl, sheet_name="Events", index=False)
-        if weekly is not None: weekly.to_excel(xl, sheet_name="Weekly")
-    return buf.getvalue()
-
-
-prices = data.round(2).join(moves.round(2).add_suffix(" % change"))
-prices.index = prices.index.date
-prices.index.name = "Date"
-weekly = data.resample("W-FRI").last()
-weekly = weekly.round(2).join((weekly.pct_change() * 100).round(2).add_suffix(" % week"))
-weekly.index = weekly.index.date
-weekly.index.name = "Week ending"
-
-week_start = (last - pd.Timedelta(days=last.weekday())).date()
-d1, d2 = st.columns(2)
-d1.download_button("Download everything (Excel)", excel_bytes(prices, show, weekly),
-                   file_name=f"gold_tracker_{date.today().isoformat()}.xlsx")
-d2.download_button("Download this week (Excel)",
-                   excel_bytes(prices[prices.index >= week_start], show[show["date"] >= week_start]),
-                   file_name=f"gold_week_of_{week_start.isoformat()}.xlsx")
+if len(show) > 0: st.dataframe(show[["date", "title",
