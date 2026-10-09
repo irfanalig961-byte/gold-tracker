@@ -1,2 +1,2 @@
 # gold-tracker
-Gold tracker and it's relation with USD/Silver
+Gold tracker and its relation with USD/Silver
