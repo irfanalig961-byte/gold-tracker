@@ -3,6 +3,7 @@ from datetime import date
 
 import pandas as pd
 import plotly.graph_objects as go
+import requests
 import streamlit as st
 import yfinance as yf
 from plotly.subplots import make_subplots
@@ -27,7 +28,14 @@ def load_prices(start):
 
 @st.cache_data(ttl=300)             # re-read your Google Sheet every 5 minutes
 def load_notes(url):
-    notes = pd.read_csv(url, dtype=str).fillna("")
+    r = requests.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+    if r.status_code != 200:
+        raise ValueError(f"Google answered with error {r.status_code}.")
+    text = r.content.decode("utf-8-sig")
+    if text.lstrip().startswith("<"):
+        raise ValueError("Google sent a web page instead of the notes. "
+                         "Check Share > General access is 'Anyone with the link: Viewer'.")
+    notes = pd.read_csv(io.StringIO(text), dtype=str).fillna("")
     notes.columns = [c.strip().lower() for c in notes.columns]
     for col in ["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
                 "dollar_note", "dollar_source", "dollar_link"]:
@@ -51,13 +59,14 @@ if data.empty:
     st.error("No prices came back from Yahoo Finance. Refresh in a minute.")
     st.stop()
 
+notes_error = None
 try:
     notes = load_notes(NOTES_URL)
-except Exception:
+except Exception as e:
+    notes_error = str(e)
     notes = pd.DataFrame(columns=["date", "title", "step1", "step2", "step3", "gold_source", "gold_link",
                                   "dollar_note", "dollar_source", "dollar_link"])
     notes["date"] = pd.to_datetime(notes["date"])
-    st.warning("Could not read the notes sheet. Check it is shared as 'Anyone with the link: Viewer'.")
 
 moves = data.pct_change() * 100                       # daily % change
 notes_in_data = notes[notes["date"].isin(data.index)]
@@ -72,7 +81,15 @@ c1, c2, c3 = st.columns(3)
 for col, name, fmt in [(c1, "Gold", "${:,.0f}"), (c2, "Dollar", "{:.2f}"), (c3, "Silver", "${:.2f}")]:
     label = {"Gold": "Gold (US$/oz)", "Dollar": "US dollar index", "Silver": "Silver (US$/oz)"}[name]
     col.metric(label, fmt.format(data[name].iloc[-1]), pct(moves[name].iloc[-1]))
-st.caption(f"Latest close: {last:%a %d %b %Y}. Prices refresh hourly, notes every 5 minutes.")
+st.caption(f"Latest close: {last:%a %d %b %Y}. Prices refresh hourly, notes every 5 minutes. "
+           f"Notes loaded: {len(notes)}.")
+if notes_error:
+    st.warning(f"Could not read the notes sheet: {notes_error}")
+elif len(notes) == 0:
+    st.info("The notes sheet was read, but no rows had a valid date in the 'date' column (e.g. 2026-10-09).")
+if st.button("Reload notes now"):
+    load_notes.clear()
+    st.rerun()
 
 with st.expander("What is measured, and how to read it"):
     st.markdown("""
