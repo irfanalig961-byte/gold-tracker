@@ -172,25 +172,253 @@ if len(show) == 0: st.write("No notes yet.")
 if len(show) > 0: st.dataframe(show[["date", "title", "step1", "step2", "step3", "gold_link", "dollar_note", "dollar_link", "silver_note", "silver_link"]], width="stretch", hide_index=True, column_config={"gold_link": st.column_config.LinkColumn("Gold news"), "dollar_link": st.column_config.LinkColumn("Dollar news"), "silver_link": st.column_config.LinkColumn("Silver news")})
 
 
-# ---------------- Excel downloads ----------------
-def excel_bytes(prices, events, weekly=None):
+# ---------------- Excel downloads: a readable report + the raw data ----------------
+from openpyxl import Workbook
+from openpyxl.chart import LineChart, Reference
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
+INK, GREY, GOLDC, UP, DOWN, CARD, LINE = "222222", "777777", "8B6914", "1E7B34", "C0392B", "FBF6E9", "E6DCC3"
+
+
+def _font(size=11, bold=False, color=INK, italic=False, underline=None):
+    return Font(name="Arial", size=size, bold=bold, color=color, italic=italic, underline=underline)
+
+
+def _say(ws, cell, text, **f):
+    ws[cell] = text
+    ws[cell].font = _font(**f)
+    ws[cell].alignment = Alignment(vertical="top", wrap_text=True)
+
+
+def _block(ws, row, text, height_per_line=15, chars_per_line=115, **f):
+    # one wide wrapped paragraph across columns B:I
+    ws.merge_cells(start_row=row, start_column=2, end_row=row, end_column=9)
+    _say(ws, f"B{row}", text, **f)
+    lines = max(1, -(-len(text) // chars_per_line))
+    ws.row_dimensions[row].height = lines * height_per_line + 4
+
+
+def _signed(x, suffix="%"):
+    return "–" if pd.isna(x) else f"{x:+.1f}{suffix}"
+
+
+def _chart(ws, src, col, title, anchor, rows):
+    ch = LineChart()
+    ch.title = title
+    ch.legend = None
+    ch.height, ch.width = 6.2, 8.2
+    ch.add_data(Reference(src, min_col=col, min_row=1, max_row=rows + 1), titles_from_data=True)
+    ch.set_categories(Reference(src, min_col=1, min_row=2, max_row=rows + 1))
+    vals = [v for v in (src.cell(r, col).value for r in range(2, rows + 2)) if isinstance(v, (int, float))]
+    if vals:
+        pad = (max(vals) - min(vals)) * 0.15 or max(vals) * 0.01
+        ch.y_axis.scaling.min = round(min(vals) - pad, 2)
+        ch.y_axis.scaling.max = round(max(vals) + pad, 2)
+    ch.x_axis.number_format = "dd mmm"
+    ch.x_axis.delete = False
+    ch.y_axis.delete = False
+    ch.y_axis.majorGridlines = None
+    ch.series[0].graphicalProperties.line.solidFill = {"Gold": "B8860B", "Dollar": "2E8B57", "Silver": "4682B4"}[title.split()[0]]
+    ch.series[0].graphicalProperties.line.width = 28000
+    ch.series[0].smooth = False
+    ws.add_chart(ch, anchor)
+
+
+def _data_sheet(ws, df, index_label, pct_word):
+    head = [index_label] + list(df.columns)
+    ws.append(head)
+    for idx, row in df.iterrows():
+        ws.append([idx] + [None if pd.isna(v) else float(v) for v in row])
+    for c, h in enumerate(head, 1):
+        cell = ws.cell(1, c)
+        cell.font = _font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=GOLDC)
+        cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+        ws.column_dimensions[get_column_letter(c)].width = 13 if c > 1 else 14
+        for r in range(2, ws.max_row + 1):
+            x = ws.cell(r, c)
+            x.font = _font()
+            if c == 1:
+                x.number_format = "ddd dd mmm yyyy"
+            elif pct_word in h:
+                x.number_format = '+0.00"%";-0.00"%";0.00"%"'
+                if isinstance(x.value, float) and x.value != 0:
+                    x.font = _font(color=UP if x.value > 0 else DOWN)
+            else:
+                x.number_format = "#,##0.00"
+    ws.row_dimensions[1].height = 30
+    ws.freeze_panes = "B2"
+
+
+def _events_sheet(ws, ev):
+    cols = [("date", "Date", 13), ("title", "Headline", 34), ("step1", "What happened 1", 40), ("step2", "What happened 2", 40),
+            ("step3", "What happened 3", 40), ("gold_link", "Gold news", 12), ("dollar_note", "Dollar", 40),
+            ("dollar_link", "Dollar news", 12), ("silver_note", "Silver", 40), ("silver_link", "Silver news", 12)]
+    for c, (_, label, w) in enumerate(cols, 1):
+        cell = ws.cell(1, c, label)
+        cell.font = _font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor=GOLDC)
+        cell.alignment = Alignment(vertical="center")
+        ws.column_dimensions[get_column_letter(c)].width = w
+    for r, (_, n) in enumerate(ev.iterrows(), 2):
+        longest = 1
+        for c, (key, _, w) in enumerate(cols, 1):
+            v = n.get(key, "")
+            cell = ws.cell(r, c)
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+            cell.font = _font(bold=(key == "title"))
+            if key == "date":
+                cell.value = pd.Timestamp(v).date()
+                cell.number_format = "ddd dd mmm"
+            elif key.endswith("_link"):
+                if str(v).startswith("http"):
+                    src = n.get(key.replace("_link", "_source"), "") or "Open"
+                    cell.value = f"{src} ↗"
+                    cell.hyperlink = str(v)
+                    cell.font = _font(color="1F5FAD", underline="single")
+            else:
+                cell.value = v
+                longest = max(longest, -(-len(str(v)) // int(w * 1.1)))
+        ws.row_dimensions[r].height = longest * 14 + 6
+    ws.row_dimensions[1].height = 22
+    ws.freeze_panes = "B2"
+    if ws.max_row > 1:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{ws.max_row}"
+
+
+def excel_bytes(px, ev, title, weekly=None):
+    # px: prices for the period (Gold, Dollar, Silver), ev: notes for the period
+    px = px.dropna(how="all")
+    before = data[data.index < px.index[0]]
+    base = before.iloc[-1] if len(before) else px.iloc[0]          # close just before the period
+    mv = moves.reindex(px.index)                                    # daily % moves from the full history
+    wb = Workbook()
+    rep = wb.active
+    rep.title = "Report"
+    raw = wb.create_sheet("Daily prices")
+    table = px.round(2).join(mv.round(2).add_suffix(" % change"))
+    table.index = table.index.date
+    _data_sheet(raw, table, "Date", "%")
+    _events_sheet(wb.create_sheet("Events"), ev.sort_values("date", ascending=False))
+    if weekly is not None:
+        _data_sheet(wb.create_sheet("Weekly"), weekly, "Week ending", "%")
+
+    # ----- the report page -----
+    rep.sheet_view.showGridLines = False
+    rep.column_dimensions["A"].width = 3
+    for c in "BCDEFGHI":
+        rep.column_dimensions[c].width = 13.5
+    first, lastd = px.index[0], px.index[-1]
+    _block(rep, 2, title, size=22, bold=True, height_per_line=30)
+    _block(rep, 3, f"{first:%a %d %b %Y} to {lastd:%a %d %b %Y}  ·  {len(px)} trading days  ·  {len(ev)} notes", color=GREY)
+
+    # three price cards
+    edge = Side(style="thin", color=LINE)
+    cards = [("Gold", "US$ per troy ounce", "B", "C", "{:,.0f}"), ("Dollar", "US dollar index", "E", "F", "{:.2f}"),
+             ("Silver", "US$ per troy ounce", "H", "I", "{:.2f}")]
+    for name, unit, c1, c2, fmt in cards:
+        chg = (px[name].iloc[-1] / base[name] - 1) * 100
+        for r in range(5, 9):
+            rep.merge_cells(f"{c1}{r}:{c2}{r}")
+            for c in (c1, c2):
+                rep[f"{c}{r}"].fill = PatternFill("solid", fgColor=CARD)
+                rep[f"{c}{r}"].border = Border(left=edge if c == c1 else None, right=edge if c == c2 else None,
+                                                top=edge if r == 5 else None, bottom=edge if r == 8 else None)
+            rep[f"{c1}{r}"].alignment = Alignment(horizontal="left", vertical="center", indent=1)
+        rep[f"{c1}5"] = name.upper()
+        rep[f"{c1}5"].font = _font(size=9, bold=True, color=GREY)
+        rep[f"{c1}6"] = fmt.format(px[name].iloc[-1])
+        rep[f"{c1}6"].font = _font(size=24, bold=True)
+        rep[f"{c1}7"] = f"{_signed(chg)} this period"
+        rep[f"{c1}7"].font = _font(size=11, bold=True, color=UP if chg > 0 else DOWN if chg < 0 else GREY)
+        rep[f"{c1}8"] = unit
+        rep[f"{c1}8"].font = _font(size=9, color=GREY)
+    rep.row_dimensions[6].height = 34
+
+    # how they moved together, in plain words
+    _block(rep, 10, "How they moved together", size=14, bold=True, height_per_line=22)
+    m = mv.dropna()
+    days = len(m)
+    opp = int(((m["Gold"] * m["Dollar"]) < 0).sum())
+    same = int(((m["Gold"] * m["Silver"]) > 0).sum())
+    cd = m["Gold"].corr(m["Dollar"]) if days > 2 else float("nan")
+    cs = m["Gold"].corr(m["Silver"]) if days > 2 else float("nan")
+    lines = [
+        f"Dollar vs gold: moved in opposite directions on {opp} of {days} days"
+        + ("" if pd.isna(cd) else f" (correlation {cd:+.2f}). ") + ("The usual pattern held." if opp > days / 2 else "The usual pattern did NOT hold this period."),
+        f"Silver vs gold: moved in the same direction on {same} of {days} days"
+        + ("" if pd.isna(cs) else f" (correlation {cs:+.2f}). ") + ("The usual pattern held." if same > days / 2 else "The usual pattern did NOT hold this period."),
+        "Correlation runs from −1 (always opposite) to +1 (always together). With fewer than 20 days it is only a rough guide.",
+    ]
+    for i, t in enumerate(lines):
+        _block(rep, 11 + i, t, color=GREY if i == 2 else INK, italic=(i == 2), size=10 if i == 2 else 11)
+
+    # small charts
+    _block(rep, 15, "Prices", size=14, bold=True, height_per_line=22)
+    n = len(px)
+    _chart(rep, raw, 2, "Gold (US$/oz)", "B16", n)
+    _chart(rep, raw, 3, "Dollar index", "E16", n)
+    _chart(rep, raw, 4, "Silver (US$/oz)", "H16", n)
+
+    # the story, day by day, newest first
+    r = 29
+    _block(rep, r, "What happened, day by day", size=14, bold=True, height_per_line=22)
+    r += 1
+    if len(ev) == 0:
+        _block(rep, r, "No notes for this period yet.", color=GREY)
+    for _, nt in ev.sort_values("date", ascending=False).iterrows():
+        d = pd.Timestamp(nt["date"])
+        r += 1
+        rep.merge_cells(start_row=r, start_column=2, end_row=r, end_column=4)
+        _say(rep, f"B{r}", f"{d:%A %d %B}", size=10, bold=True, color=GOLDC)
+        if d in mv.index:
+            mvd = mv.loc[d]
+            rep.merge_cells(start_row=r, start_column=5, end_row=r, end_column=9)
+            _say(rep, f"E{r}", f"Gold {_signed(mvd['Gold'])}   ·   Dollar {_signed(mvd['Dollar'])}   ·   Silver {_signed(mvd['Silver'])}", size=10, color=GREY)
+            rep[f"E{r}"].alignment = Alignment(horizontal="right")
+        for c in "BCDEFGHI":
+            rep[f"{c}{r}"].border = Border(top=Side(style="thin", color=LINE))
+        r += 1
+        _block(rep, r, nt["title"], size=13, bold=True, height_per_line=18, chars_per_line=85)
+        steps = [s for s in (nt["step1"], nt["step2"], nt["step3"]) if str(s).strip()]
+        for i, s in enumerate(steps, 1):
+            r += 1
+            _block(rep, r, f"{i}.  {s}")
+        for label, key in (("Dollar", "dollar_note"), ("Silver", "silver_note")):
+            if str(nt.get(key, "")).strip():
+                r += 1
+                _block(rep, r, f"{label}: {nt[key]}", color="444444")
+        links = [(f"{(nt.get(k + '_source') or k.title())} ({k}) ↗", nt.get(k + "_link", "")) for k in ("gold", "dollar", "silver")]
+        links = [(t, u) for t, u in links if str(u).startswith("http")]
+        if links:
+            r += 1
+            for (t, u), c in zip(links, ("B", "E", "H")):
+                c2 = chr(ord(c) + 2)
+                rep.merge_cells(f"{c}{r}:{c2}{r}")
+                rep[f"{c}{r}"] = t
+                rep[f"{c}{r}"].hyperlink = str(u)
+                rep[f"{c}{r}"].font = _font(size=10, color="1F5FAD", underline="single")
+        r += 1
+        rep.row_dimensions[r].height = 10
+    _block(rep, r + 1, "Sources: prices from Yahoo Finance (COMEX gold and silver futures, ICE US dollar index); news notes are my own, with links to the original articles.", size=9, color=GREY, italic=True)
+
+    rep.page_setup.orientation = "portrait"
+    rep.page_setup.fitToWidth = 1
+    rep.page_setup.fitToHeight = 0
+    rep.sheet_properties.pageSetUpPr.fitToPage = True
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as xl:
-        prices.to_excel(xl, sheet_name="Daily prices")
-        events.to_excel(xl, sheet_name="Events", index=False)
-        if weekly is not None: weekly.to_excel(xl, sheet_name="Weekly")
+    wb.save(buf)
     return buf.getvalue()
 
 
-prices = data.round(2).join(moves.round(2).add_suffix(" % change"))
-prices.index = prices.index.date
-prices.index.name = "Date"
 weekly = data.resample("W-FRI").last()
 weekly = weekly.round(2).join((weekly.pct_change() * 100).round(2).add_suffix(" % week"))
 weekly.index = weekly.index.date
-weekly.index.name = "Week ending"
 
-week_start = (last - pd.Timedelta(days=last.weekday())).date()
+week_start = last - pd.Timedelta(days=last.weekday())
+week_px = data[data.index >= week_start]
+week_ev = notes[notes["date"] >= week_start]
 d1, d2 = st.columns(2)
-d1.download_button("Download everything (Excel)", excel_bytes(prices, show, weekly), file_name=f"gold_tracker_{date.today().isoformat()}.xlsx")
-d2.download_button("Download this week (Excel)", excel_bytes(prices[prices.index >= week_start], show[show["date"] >= week_start]), file_name=f"gold_week_of_{week_start.isoformat()}.xlsx")
+d1.download_button("Download everything (Excel)", excel_bytes(data, notes, "Gold Tracker report", weekly), file_name=f"gold_tracker_{date.today().isoformat()}.xlsx")
+d2.download_button("Download this week (Excel)", excel_bytes(week_px, week_ev, f"Gold Tracker: week of {week_start:%d %b %Y}"), file_name=f"gold_week_of_{week_start:%Y-%m-%d}.xlsx")
